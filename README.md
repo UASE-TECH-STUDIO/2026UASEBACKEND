@@ -29,3 +29,7 @@ FastAPI service for the UASE Tech Studio website (contact form).
 - Set `ADMIN_PASSWORD`, `JWT_SECRET`, `TRACK_SECRET`, `TRACK_SALT`, `MONGODB_URI` and `CLOUDINARY_URL` on Render (see `.env.example`).
 - Six starter blog posts are inserted automatically the first time the database is empty (set `SEED_POSTS=0` to turn this off).
 - Log in at `/admin` on the website. Visits are recorded through the website's `/api/track` route, which reads Vercel's location headers.
+
+## Render settings (must be Python, not Rust/Node)
+Language: **Python 3** · Build: `pip install -r requirements.txt` · Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` · Health check: `/health`.
+`render.yaml` in this repo holds the same settings (New → Blueprint). `ALLOWED_ORIGIN_REGEX` lets Vercel preview URLs call the API.

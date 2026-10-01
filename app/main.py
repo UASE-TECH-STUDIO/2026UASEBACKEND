@@ -21,7 +21,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="UASE Tech Studio API", lifespan=lifespan)
 origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["*"],
+                   allow_origin_regex=os.getenv("ALLOWED_ORIGIN_REGEX") or None)
 for r in (auth.router, content.router, analytics.router):
     app.include_router(r)
 

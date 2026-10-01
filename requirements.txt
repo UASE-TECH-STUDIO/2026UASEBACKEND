@@ -6,3 +6,4 @@ pydantic[email]>=2.8
 PyJWT>=2.9
 cloudinary>=1.41
 python-multipart>=0.0.9
+python-dotenv>=1.0

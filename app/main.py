@@ -1,12 +1,23 @@
+import logging
 import os
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 import httpx
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from . import analytics, auth, content
+from .auth import ip, limit
 from .db import db, need_db
 from .seed import seed_posts
+
+
+log = logging.getLogger("uvicorn.error")
+
+
+def env(key: str, default: str = "") -> str:
+    """Read an env var and strip stray quotes/spaces (some dashboards keep the quotes)."""
+    return os.getenv(key, default).strip().strip("\"'")
 
 
 @asynccontextmanager
@@ -40,20 +51,31 @@ async def health():
 
 
 @app.post("/api/contact")
-async def contact(body: Contact):
+async def contact(body: Contact, req: Request):
     if body.website:
         return {"ok": True}
-    if db is not None:
-        await db.contacts.insert_one(body.model_dump(exclude={"website"}))
-    key, to = os.getenv("RESEND_API_KEY"), os.getenv("CONTACT_TO_EMAIL", "uasetechstudio@gmail.com")
+    limit("contact:" + ip(req), 6, 600)
+    saved = sent = False
+    if db is not None:  # the database copy is the safety net: you can read it in /admin
+        try:
+            await db.contacts.insert_one({**body.model_dump(exclude={"website"}), "created": datetime.now(timezone.utc), "read": False})
+            saved = True
+        except Exception as e:
+            log.error("contact: could not save message: %s", e)
+    key = env("RESEND_API_KEY")
     if key:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {key}"}, json={
-                "from": os.getenv("CONTACT_FROM_EMAIL", "UASE Website <onboarding@resend.dev>"), "to": [to],
-                "reply_to": body.email, "subject": f"New website message from {body.name}",
-                "text": f"From: {body.name} <{body.email}>\n\n{body.message}"})
-        if r.status_code >= 300:
-            raise HTTPException(502, "Email delivery failed")
-    elif db is None:
-        raise HTTPException(503, "No delivery channel configured")
-    return {"ok": True}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {key}"}, json={
+                    "from": env("CONTACT_FROM_EMAIL", "UASE Website <onboarding@resend.dev>"),
+                    "to": [env("CONTACT_TO_EMAIL", "uasetechstudio@gmail.com")],
+                    "reply_to": body.email, "subject": f"New website message from {body.name}",
+                    "text": f"From: {body.name} <{body.email}>\n\n{body.message}"})
+            sent = r.status_code < 300
+            if not sent:
+                log.error("contact: Resend rejected the email: %s %s", r.status_code, r.text[:300])
+        except Exception as e:
+            log.error("contact: Resend request failed: %s", e)
+    if not (saved or sent):
+        raise HTTPException(503, "We couldn't receive your message right now. Please use WhatsApp or email.")
+    return {"ok": True, "saved": saved, "emailed": sent}

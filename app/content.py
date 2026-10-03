@@ -204,3 +204,14 @@ async def a_comments(db=Depends(need_db)):
 async def a_comment_del(cid: str, db=Depends(need_db)):
     await db.comments.delete_one({"_id": oid(cid)})
     return {"ok": True}
+
+
+@router.get("/api/admin/messages", dependencies=A)
+async def a_messages(db=Depends(need_db)):
+    return [ser(m) async for m in db.contacts.find().sort("created", -1).limit(200)]
+
+
+@router.delete("/api/admin/messages/{mid}", dependencies=A)
+async def a_message_del(mid: str, db=Depends(need_db)):
+    await db.contacts.delete_one({"_id": oid(mid)})
+    return {"ok": True}
